@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard Phân loại áo - Pusher</title>
+  <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background:#f7f9fc; color:#222; }
+    .card { background: #fff; padding: 18px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 12px; max-width:900px; }
+    h1 { margin: 0 0 8px 0; font-size: 22px; color:#003366; }
+    .counts { display:flex; gap:12px; margin-top:12px; }
+    .count { flex:1; padding:12px; border-radius:6px; background:#f4f6fb; text-align:center; }
+    .label-last{ font-size:18px; font-weight:700;}
+    .ts { font-size:12px; color:#666; }
+    #log { max-height:240px; overflow:auto; background:#ffffff; padding:10px; border-radius:6px; border:1px solid #eee; }
+    .log-item { padding:6px; border-bottom:1px solid #f0f0f0; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Dashboard - Hệ thống phân loại áo</h1>
+    <div>Trạng thái kết nối Pusher: <span id="conn-status">Đang kết nối...</span></div>
+  </div>
+
+  <div class="card">
+    <div class="label-last">Loại áo gần nhất: <span id="last-label">—</span></div>
+    <div class="ts" id="last-time">—</div>
+  </div>
+
+  <div class="card">
+    <h2>Thống kê</h2>
+    <div class="counts">
+      <div class="count">
+        <div>Áo sọc dọc</div>
+        <div id="count-doc" style="font-size:24px;font-weight:700">0</div>
+      </div>
+      <div class="count">
+        <div>Áo sọc ngang</div>
+        <div id="count-ngang" style="font-size:24px;font-weight:700">0</div>
+      </div>
+      <div class="count">
+        <div>Áo trơn</div>
+        <div id="count-tron" style="font-size:24px;font-weight:700">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Log & Trạng thái PLC</h2>
+    <div id="log"><div class="log-item">Chưa có dữ liệu...</div></div>
+  </div>
+
+  <script>
+    // Thay bằng Pusher key & cluster (như bạn đã tạo) — KHÔNG đặt secret ở đây
+    const PUSHER_KEY = "78088bd0fae138c8548b";
+    const PUSHER_CLUSTER = "ap1";
+
+    Pusher.logToConsole = false;
+
+    const pusher = new Pusher(PUSHER_KEY, { cluster: PUSHER_CLUSTER });
+
+    const channel = pusher.subscribe('shirt-channel');
+
+    const connStatus = document.getElementById('conn-status');
+    pusher.connection.bind('connected', () => {
+      connStatus.innerText = 'Đã kết nối';
+      connStatus.style.color = 'green';
+    });
+    pusher.connection.bind('disconnected', () => {
+      connStatus.innerText = 'Ngắt kết nối';
+      connStatus.style.color = 'red';
+    });
+
+    function addLog(text) {
+      const log = document.getElementById('log');
+      const node = document.createElement('div');
+      node.className = 'log-item';
+      node.textContent = new Date().toLocaleTimeString() + ' — ' + text;
+      // insert on top
+      log.insertBefore(node, log.firstChild);
+    }
+
+    const mapLabel = {
+      "soc_doc": "Áo sọc dọc",
+      "soc_ngang": "Áo sọc ngang",
+      "ao_tron": "Áo trơn"
+    };
+
+    channel.bind('shirt-detected', function(data) {
+      document.getElementById('last-label').innerText = mapLabel[data.label] || data.label;
+      document.getElementById('count-doc').innerText = data.count_doc;
+      document.getElementById('count-ngang').innerText = data.count_ngang;
+      document.getElementById('count-tron').innerText = data.count_tron;
+      document.getElementById('last-time').innerText = 'Cập nhật: ' + new Date(data.timestamp*1000).toLocaleString();
+      addLog('Detected: ' + (mapLabel[data.label] || data.label) + ' — counts: ' + data.count_doc + '/' + data.count_ngang + '/' + data.count_tron);
+    });
+
+    channel.bind('counter-reset', function(data) {
+      document.getElementById('count-doc').innerText = data.count_doc;
+      document.getElementById('count-ngang').innerText = data.count_ngang;
+      document.getElementById('count-tron').innerText = data.count_tron;
+      document.getElementById('last-label').innerText = '—';
+      document.getElementById('last-time').innerText = 'Reset lúc ' + new Date(data.timestamp*1000).toLocaleString();
+      addLog('Counter reset by server');
+    });
+
+    channel.bind('plc-status', function(data) {
+      addLog('PLC status: ' + JSON.stringify(data));
+    });
+
+    // Optional: show initial message
+    addLog('Client ready — waiting events...');
+  </script>
+</body>
+</html>
